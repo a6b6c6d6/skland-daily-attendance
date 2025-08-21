@@ -18,9 +18,53 @@ function createCombinePushMessage(options: Options) {
   const logger = (message: string, error?: boolean) => {
     messages.push(message)
     console[error ? 'error' : 'log'](message)
-    if (error && !hasError)
-      hasError = true
+    if (error && !hasError) hasError = true
   }
+
+  // 钉钉推送
+  async function dingtalk(
+    webhook: string,
+    secret: string | undefined,
+    title: string,
+    content: string,
+  ) {
+    let url = webhook
+    if (secret) {
+      const timestamp = Date.now()
+      const sign = require('crypto')
+        .createHmac('sha256', secret)
+        .update(`${timestamp}\n${secret}`)
+        .digest('base64')
+      url += `&timestamp=${timestamp}&sign=${encodeURIComponent(sign)}`
+    }
+    const body = { msgtype: 'text', text: { content: `${title}\n${content}` } }
+    await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+  }
+
+  const push = async () => {
+    const title = '【森空岛每日签到】'
+    const content = messages.join('\n\n')
+
+    // 原有渠道
+    if (options.withServerChan) await serverChan(options.withServerChan, title, content)
+    if (options.withBark) await bark(options.withBark, title, content)
+    if (options.withMessagePusher) await messagePusher(options.withMessagePusher, title, content)
+
+    // 新增钉钉
+    const dingWebhook = process.env.DINGTALK_WEBHOOK
+    const dingSecret  = process.env.DINGTALK_SECRET
+    if (dingWebhook) await dingtalk(dingWebhook, dingSecret, title, content)
+
+    if (hasError) process.exit(1)
+  }
+
+  const add = (message: string) => messages.push(message)
+  return [logger, push, add] as const
+}
   const push = async () => {
     const title = `【森空岛每日签到】`
     const content = messages.join('\n\n')
