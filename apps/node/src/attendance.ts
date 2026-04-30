@@ -68,15 +68,21 @@ function createCombinePushMessage(options: Options) {
   return [logger, push, add] as const
 }
 
+/** 角色显示名 */
+function chrName(character: { channelMasterId: number; uid: number }) {
+  return `${character.channelMasterId !== 1 ? 'B服' : '官服'} ${character.uid}`
+}
+
 /** 针对一个 token 执行签到 */
-export async function doAttendanceForAccount(token: string, options: Options) {
+export async function doAttendanceForAccount(token: string, options: Options, accountLabel = '') {
   const { code } = await auth(token)
   const { cred, token: signToken } = await signIn(code)
   const { list } = await getBinding(cred, signToken)
 
   const [combineMessage, executePush, addMessage] = createCombinePushMessage(options)
 
-  addMessage('## 明日方舟签到')
+  const accountHeader = accountLabel ? `【${accountLabel}】` : ''
+  addMessage(`━━━ ${accountHeader}明日方舟签到 ━━━`)
 
   const characterList = list
     .filter(i => i.appCode === 'arknights')
@@ -96,33 +102,33 @@ export async function doAttendanceForAccount(token: string, options: Options) {
           })
 
           if (!data) {
-            addMessage(`${character.channelMasterId !== 1 ? 'B服' : '官服'}角色 ${character.uid} 今天已签到`)
+            addMessage(`  ✓ ${chrName(character)} — 今日已签到`)
             break
           }
 
           if (data.code === 0 && data.message === 'OK') {
             const awards = data.data.awards
-              .map(a => `「${a.resource.name}」${a.count}个`)
-              .join(', ')
+              .map(a => `「${a.resource.name}」×${a.count}`)
+              .join('、')
             combineMessage(
-              `${character.channelMasterId !== 1 ? 'B服' : '官服'}角色 ${character.uid} 签到成功，获得 ${awards}`,
+              `  ✓ ${chrName(character)} — 签到成功，获得 ${awards}`,
             )
             successAttendance++
             break
           }
 
           combineMessage(
-            `${character.channelMasterId !== 1 ? 'B服' : '官服'}角色 ${character.uid} 签到失败：${data.message}`,
+            `  ✗ ${chrName(character)} — 签到失败：${data.message}`,
             true,
           )
           retries++
         } catch (err: any) {
           if (err?.response?.status === 403) {
-            addMessage(`${character.channelMasterId !== 1 ? 'B服' : '官服'}角色 ${character.uid} 今天已签到`)
+            addMessage(`  ✓ ${chrName(character)} — 今日已签到`)
             break
           }
           combineMessage(
-            `${character.channelMasterId !== 1 ? 'B服' : '官服'}角色 ${character.uid} 未知错误：${err.message}`,
+            `  ✗ ${chrName(character)} — 异常：${err.message}`,
             true,
           )
           retries++
@@ -133,6 +139,6 @@ export async function doAttendanceForAccount(token: string, options: Options) {
     }),
   )
 
-  if (successAttendance) combineMessage(`共成功签到 ${successAttendance} 个角色`)
+  if (successAttendance) addMessage(`━━━ 共成功签到 ${successAttendance} 个角色 ━━━`)
   await executePush()
 }

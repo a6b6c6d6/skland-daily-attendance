@@ -19,5 +19,5 @@ for (const [index, token] of accounts.entries()) {
     withServerChan: process.env.SERVER_CHAN_TOKEN,
     withBark: process.env.BARK_URL,
     withMessagePusher: process.env.MESSAGE_PUSHER_URL,
-  })
+  }, accounts.length > 1 ? `账号 ${index + 1}` : '')
 }
