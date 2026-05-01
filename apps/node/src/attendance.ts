@@ -13,6 +13,17 @@ interface Options {
   withMessagePusher?: false | string
 }
 
+/* ---------- 消息推送 ---------- */
+
+export interface MessageCollector {
+  /** 记录一条消息到日志和控制台（error=true 会 console.error 并标记失败） */
+  logger: (msg: string, error?: boolean) => void
+  /** 把收集到的所有消息推送到所有已配置的渠道 */
+  push: () => Promise<void>
+  /** 仅追加消息，不打印日志 */
+  add: (msg: string) => void
+}
+
 /** 钉钉推送（支持加签） */
 async function dingtalk(
   webhook: string,
@@ -38,7 +49,7 @@ async function dingtalk(
 }
 
 /** 统一日志 + 推送封装 */
-function createCombinePushMessage(options: Options) {
+export function createCombinePushMessage(options: Options): MessageCollector {
   const messages: string[] = []
   let hasError = false
 
@@ -65,7 +76,7 @@ function createCombinePushMessage(options: Options) {
   }
 
   const add = (msg: string) => messages.push(msg)
-  return [logger, push, add] as const
+  return { logger, push, add }
 }
 
 /** 角色显示名 */
@@ -74,12 +85,19 @@ function chrName(character: { channelMasterId: number; uid: number }) {
 }
 
 /** 针对一个 token 执行签到 */
-export async function doAttendanceForAccount(token: string, options: Options, accountLabel = '') {
+export async function doAttendanceForAccount(
+  token: string,
+  options: Options,
+  accountLabel = '',
+  collector?: MessageCollector,
+) {
   const { code } = await auth(token)
   const { cred, token: signToken } = await signIn(code)
   const { list } = await getBinding(cred, signToken)
 
-  const [combineMessage, executePush, addMessage] = createCombinePushMessage(options)
+  // 如果传入了外部 collector，复用它的消息队列；否则自建一个（独立推送）
+  const c = collector ?? createCombinePushMessage(options)
+  const { logger: combineMessage, push: executePush, add: addMessage } = c
 
   const accountHeader = accountLabel ? `【${accountLabel}】` : ''
   addMessage(`━━━ ${accountHeader}明日方舟签到 ━━━`)
@@ -140,5 +158,7 @@ export async function doAttendanceForAccount(token: string, options: Options, ac
   )
 
   if (successAttendance) addMessage(`━━━ 共成功签到 ${successAttendance} 个角色 ━━━`)
-  await executePush()
+
+  // 没有外部 collector 时才自己推（单体模式）
+  if (!collector) await executePush()
 }
