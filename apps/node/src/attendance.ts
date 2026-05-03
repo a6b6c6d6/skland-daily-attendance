@@ -24,7 +24,7 @@ export interface MessageCollector {
   add: (msg: string) => void
 }
 
-/** 钉钉推送（支持加签） */
+/** 钉钉推送（支持加签，Markdown 格式） */
 async function dingtalk(
   webhook: string,
   secret: string | undefined,
@@ -40,7 +40,10 @@ async function dingtalk(
       .digest('base64')
     url += `&timestamp=${timestamp}&sign=${encodeURIComponent(sign)}`
   }
-  const body = { msgtype: 'text', text: { content: `${title}\n${content}` } }
+  const body = {
+    msgtype: 'markdown',
+    markdown: { title, text: `## ${title}\n${content}` },
+  }
   await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -60,7 +63,7 @@ export function createCombinePushMessage(options: Options): MessageCollector {
   }
 
   const push = async () => {
-    const title = '【森空岛每日签到】'
+    const title = '森空岛每日签到'
     const content = messages.join('\n\n')
 
     if (options.withServerChan) await serverChan(options.withServerChan, title, content)
@@ -99,8 +102,8 @@ export async function doAttendanceForAccount(
   const c = collector ?? createCombinePushMessage(options)
   const { logger: combineMessage, push: executePush, add: addMessage } = c
 
-  const accountHeader = accountLabel ? `【${accountLabel}】` : ''
-  addMessage(`━━━ ${accountHeader}明日方舟签到 ━━━`)
+  const accountHeader = accountLabel ? `**${accountLabel}**` : ''
+  addMessage(`---\n\n### ${accountHeader}明日方舟签到`)
 
   const characterList = list
     .filter(i => i.appCode === 'arknights')
@@ -120,7 +123,7 @@ export async function doAttendanceForAccount(
           })
 
           if (!data) {
-            addMessage(`  ✓ ${chrName(character)} — 今日已签到`)
+            addMessage(`- ✅ **${chrName(character)}** — 今日已签到`)
             break
           }
 
@@ -129,24 +132,25 @@ export async function doAttendanceForAccount(
               .map(a => `「${a.resource.name}」×${a.count}`)
               .join('、')
             combineMessage(
-              `  ✓ ${chrName(character)} — 签到成功，获得 ${awards}`,
+              `- ✅ **${chrName(character)}** — 签到成功`,
             )
+            addMessage(`  - 获得：${awards}`)
             successAttendance++
             break
           }
 
           combineMessage(
-            `  ✗ ${chrName(character)} — 签到失败：${data.message}`,
+            `- ❌ **${chrName(character)}** — 签到失败：${data.message}`,
             true,
           )
           retries++
         } catch (err: any) {
           if (err?.response?.status === 403) {
-            addMessage(`  ✓ ${chrName(character)} — 今日已签到`)
+            addMessage(`- ✅ **${chrName(character)}** — 今日已签到`)
             break
           }
           combineMessage(
-            `  ✗ ${chrName(character)} — 异常：${err.message}`,
+            `- ❌ **${chrName(character)}** — 异常：${err.message}`,
             true,
           )
           retries++
@@ -157,7 +161,7 @@ export async function doAttendanceForAccount(
     }),
   )
 
-  if (successAttendance) addMessage(`━━━ 共成功签到 ${successAttendance} 个角色 ━━━`)
+  if (successAttendance) addMessage(`---\n\n📊 **共成功签到 ${successAttendance} 个角色**`)
 
   // 没有外部 collector 时才自己推（单体模式）
   if (!collector) await executePush()
